@@ -2,7 +2,7 @@ namespace Internal.Utilities
 
 open System.Runtime.InteropServices
 
-module  RidHelpers =
+module RidHelpers =
 
     // Computer valid dotnet-rids for this environment:
     //      https://learn.microsoft.com/dotnet/core/rid-catalog
