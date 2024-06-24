@@ -1,0 +1,172 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <NoWarn>$(NoWarn);44</NoWarn>
+    <!-- Obsolete -->
+    <NoWarn>$(NoWarn);57</NoWarn>
+    <!-- Experimental -->
+    <NoWarn>$(NoWarn);75</NoWarn>
+    <!-- InternalCommandLineOption -->
+    <NoWarn>$(NoWarn);1204</NoWarn>
+    <!-- This construct is for use in the FSharp.Core library and should not be used directly -->
+    <NoWarn>$(NoWarn);NU5125</NoWarn>
+    
+    <!--<DefineConstants>$(DefineConstants);COMPILER</DefineConstants>
+    <DefineConstants Condition="'$(FSHARPCORE_USE_PACKAGE)' == 'true'">$(DefineConstants);FSHARPCORE_USE_PACKAGE</DefineConstants>-->
+
+    <AllowCrossTargeting>true</AllowCrossTargeting>
+
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>$(DefineConstants);COMPILER</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants>$(DefineConstants);COMPILER</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    
+    <EmbeddedText Include="FSComp.txt">
+      <Link>FSComp.txt</Link>
+    </EmbeddedText>
+    
+    <EmbeddedResource Include="FSStrings.resx">
+      <Link>FSStrings.resx</Link>
+      <LogicalName>FSStrings.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Utilities\Activity.fsi" />
+    <Compile Include="Utilities\Activity.fs" />
+    <Compile Include="Utilities\sformat.fsi" />
+    <Compile Include="Utilities\sformat.fs" />
+    <Compile Include="Utilities\sr.fsi" />
+    <Compile Include="Utilities\sr.fs" />
+    <Compile Include="Utilities\ResizeArray.fsi" />
+    <Compile Include="Utilities\ResizeArray.fs" />
+    <Compile Include="Utilities\HashMultiMap.fsi" />
+    <Compile Include="Utilities\HashMultiMap.fs" />
+    <Compile Include="Utilities\EditDistance.fsi" />
+    <Compile Include="Utilities\EditDistance.fs" />
+    <Compile Include="Utilities\TaggedCollections.fsi" />
+    <Compile Include="Utilities\TaggedCollections.fs" />
+    <Compile Include="Utilities\illib.fsi" />
+    <Compile Include="Utilities\illib.fs" />
+    <Compile Include="Utilities\Cancellable.fsi" />
+    <Compile Include="Utilities\Cancellable.fs" />
+    <Compile Include="Utilities\FileSystem.fsi" />
+    <Compile Include="Utilities\FileSystem.fs" />
+    <Compile Include="Utilities\ildiag.fsi" />
+    <Compile Include="Utilities\ildiag.fs" />
+    <Compile Include="Utilities\zmap.fsi" />
+    <Compile Include="Utilities\zmap.fs" />
+    <Compile Include="Utilities\zset.fsi" />
+    <Compile Include="Utilities\zset.fs" />
+    <Compile Include="Utilities\XmlAdapters.fsi" />
+    <Compile Include="Utilities\XmlAdapters.fs" />
+    <Compile Include="Utilities\InternalCollections.fsi" />
+    <Compile Include="Utilities\InternalCollections.fs" />
+    <Compile Include="Utilities\QueueList.fsi" />
+    <Compile Include="Utilities\QueueList.fs" />
+    <Compile Include="Utilities\lib.fsi" />
+    <Compile Include="Utilities\lib.fs" />
+    <Compile Include="Utilities\LruCache.fsi" />
+    <Compile Include="Utilities\LruCache.fs" />
+    <Compile Include="Utilities\ImmutableArray.fsi" />
+    <Compile Include="Utilities\ImmutableArray.fs" />
+    <Compile Include="Utilities\rational.fsi" />
+    <Compile Include="Utilities\rational.fs" />
+    <Compile Include="Utilities\PathMap.fsi" />
+    <Compile Include="Utilities\PathMap.fs" />
+    <Compile Include="Utilities\RidHelpers.fs" />
+    <Compile Include="Utilities\range.fsi" />
+    <Compile Include="Utilities\range.fs" />
+    <Compile Include="Utilities\ReadOnlySpan.fsi" />
+    <Compile Include="Utilities\ReadOnlySpan.fs" />
+
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <EmbeddedText Include="Facilities\UtilsStrings.txt" />
+    <Compile Include="Facilities\LanguageFeatures.fsi" />
+    <Compile Include="Facilities\LanguageFeatures.fs" />
+    <Compile Include="Facilities\DiagnosticOptions.fsi" />
+    <Compile Include="Facilities\DiagnosticOptions.fs" />
+    <Compile Include="Facilities\TextLayoutRender.fsi" />
+    <Compile Include="Facilities\TextLayoutRender.fs" />
+    <Compile Include="Facilities\DiagnosticsLogger.fsi" />
+    <Compile Include="Facilities\DiagnosticsLogger.fs" />
+    <Compile Include="Facilities\DiagnosticResolutionHints.fsi" />
+    <Compile Include="Facilities\DiagnosticResolutionHints.fs" />
+    <Compile Include="Facilities\Hashing.fsi" />
+    <Compile Include="Facilities\Hashing.fs" />
+    <Compile Include="Facilities\prim-lexing.fsi" />
+    <Compile Include="Facilities\prim-lexing.fs" />
+    <Compile Include="Facilities\prim-parsing.fsi" />
+    <Compile Include="Facilities\prim-parsing.fs" />
+    <Compile Include="Facilities\ReferenceResolver.fsi" />
+    <Compile Include="Facilities\ReferenceResolver.fs" />
+    <Compile Include="Facilities\SimulatedMSBuildReferenceResolver.fsi" />
+    <Compile Include="Facilities\SimulatedMSBuildReferenceResolver.fs" />
+    <Compile Include="Facilities\CompilerLocation.fsi" />
+    <Compile Include="Facilities\CompilerLocation.fs" />
+    <Compile Include="Facilities\BuildGraph.fsi" />
+    <Compile Include="Facilities\BuildGraph.fs" />
+    <Compile Include="Facilities\AsyncMemoize.fsi" />
+    <Compile Include="Facilities\AsyncMemoize.fs" />
+
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="SyntaxTree\PrettyNaming.fsi" />
+    <Compile Include="SyntaxTree\PrettyNaming.fs" />
+    <Compile Include="SyntaxTree\UnicodeLexing.fsi" />
+    <Compile Include="SyntaxTree\UnicodeLexing.fs" />
+    <Compile Include="SyntaxTree\XmlDoc.fsi" />
+    <Compile Include="SyntaxTree\XmlDoc.fs" />
+    <Compile Include="SyntaxTree\SyntaxTrivia.fsi" />
+    <Compile Include="SyntaxTree\SyntaxTrivia.fs" />
+    <Compile Include="SyntaxTree\SyntaxTree.fsi" />
+    <Compile Include="SyntaxTree\SyntaxTree.fs" />
+    <Compile Include="SyntaxTree\SyntaxTreeOps.fsi" />
+    <Compile Include="SyntaxTree\SyntaxTreeOps.fs" />
+    <Compile Include="SyntaxTree\ParseHelpers.fsi" />
+    <Compile Include="SyntaxTree\ParseHelpers.fs" />
+    <Compile Include="SyntaxTree\token.fs" />
+    <Compile Include="SyntaxTree\LexHelpers.fsi" />
+    <Compile Include="SyntaxTree\LexHelpers.fs" />
+    <Compile Include="SyntaxTree\PositionUtils.fs" />
+    <Compile Include="SyntaxTree\Context.fs" />
+    <Compile Include="SyntaxTree\TokenUtils.fs" />
+    <Compile Include="SyntaxTree\LexbufState.fs" />
+    <Compile Include="SyntaxTree\TokenTup.fs" />
+    <Compile Include="SyntaxTree\TokenTupPool.fs" />
+    <Compile Include="SyntaxTree\TokenizerUtils.fs" />
+    <Compile Include="SyntaxTree\PositionWithColumn.fs" />
+    <Compile Include="SyntaxTree\LexFilterImpl.fs" />
+    <Compile Include="SyntaxTree\LexFilter.fsi" />
+    <Compile Include="SyntaxTree\LexFilter.fs" />
+
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <PackageReference Include="System.Buffers" Version="4.5.1" />
+    <PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="8.0.1" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="System.Reflection.Emit" Version="4.7.0" />
+    <PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
+  </ItemGroup>
+
+</Project>
