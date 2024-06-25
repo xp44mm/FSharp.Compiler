@@ -13,7 +13,6 @@ open FSharp.Compiler.ParseHelpers
 open FSharp.Compiler.Parser
 open FSharp.Compiler.UnicodeLexing
 open FSharp.Compiler
-open FSharp.Compiler.PositionUtils
 
 type TokenTupPool() =
 
@@ -24,8 +23,9 @@ type TokenTupPool() =
     let maxSize = 100
 
     let mutable currentPoolSize = 0
-    let stack = Stack(10)
+    let stack:Stack<TokenTup> = Stack(10)
 
+    /// stack.Pop()
     member pool.Rent() =
         if stack.Count = 0 then
             if currentPoolSize < maxSize then
@@ -38,6 +38,7 @@ type TokenTupPool() =
         else
             stack.Pop()
 
+    /// stack.Push x
     member _.Return(x: TokenTup) =
         x.Token <- Unchecked.defaultof<_>
         x.LexbufState <- Unchecked.defaultof<_>
@@ -48,7 +49,7 @@ type TokenTupPool() =
             stack.Push x
 
     /// Returns a token 'tok' with the same position as this token
-    member pool.UseLocation(x: TokenTup, tok) =
+    member pool.UseLocation(x: TokenTup, tok:token) =
         let tokState = x.LexbufState
         let tokTup = pool.Rent()
         tokTup.Token <- tok
@@ -59,11 +60,13 @@ type TokenTupPool() =
     /// Returns a token 'tok' with the same position as this token, except that
     /// it is shifted by specified number of characters from the left and from the right
     /// Note: positive value means shift to the right in both cases
-    member pool.UseShiftedLocation(x: TokenTup, tok, shiftLeft, shiftRight) =
+    member pool.UseShiftedLocation(x: TokenTup, tok:token, shiftLeft:int, shiftRight:int) =
         let tokState = x.LexbufState
         let tokTup = pool.Rent()
         tokTup.Token <- tok
-        tokTup.LexbufState <- LexbufState(tokState.StartPos.ShiftColumnBy shiftLeft, tokState.EndPos.ShiftColumnBy shiftRight, false)
+        tokTup.LexbufState <- LexbufState(
+            tokState.StartPos.ShiftColumnBy shiftLeft, 
+            tokState.EndPos.ShiftColumnBy shiftRight, false)
         tokTup.LastTokenPos <- x.LastTokenPos
         tokTup
 

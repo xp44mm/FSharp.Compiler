@@ -46,7 +46,7 @@ type LexResourceManager(?capacity: int) =
     let strings =
         System.Collections.Concurrent.ConcurrentDictionary<string, token>(Environment.ProcessorCount, defaultArg capacity 1024)
 
-    member x.InternIdentifierToken(s) =
+    member x.InternIdentifierToken(s:string) =
         match strings.TryGetValue s with
         | true, res -> res
         | _ ->

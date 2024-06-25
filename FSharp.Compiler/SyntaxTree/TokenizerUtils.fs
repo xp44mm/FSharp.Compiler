@@ -13,7 +13,6 @@ open FSharp.Compiler.ParseHelpers
 open FSharp.Compiler.Parser
 open FSharp.Compiler.UnicodeLexing
 open FSharp.Compiler
-open FSharp.Compiler.PositionUtils
 
 //----------------------------------------------------------------------------
 // Utilities for the tokenizer that are needed in other places

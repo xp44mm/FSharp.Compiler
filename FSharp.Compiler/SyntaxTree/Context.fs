@@ -13,7 +13,6 @@ open FSharp.Compiler.ParseHelpers
 open FSharp.Compiler.Parser
 open FSharp.Compiler.UnicodeLexing
 open FSharp.Compiler
-open FSharp.Compiler.PositionUtils
 
 type Context =
     // Position is position of keyword.
@@ -72,30 +71,30 @@ type Context =
         | CtxtException _ -> "exception"
         | CtxtModuleBody _ -> "modbody"
         | CtxtNamespaceBody _ -> "nsbody"
-        | CtxtLetDecl(b, p) -> sprintf "let(%b, %s)" b (stringOfPos p)
-        | CtxtWithAsLet p -> sprintf "withlet(%s)" (stringOfPos p)
+        | CtxtLetDecl(b, p) -> sprintf "let(%b, %s)" b (PositionUtils.stringOfPos p)
+        | CtxtWithAsLet p -> sprintf "withlet(%s)" (PositionUtils.stringOfPos p)
         | CtxtWithAsAugment _ -> "withaug"
         | CtxtDo _ -> "do"
         | CtxtInterfaceHead _ -> "interface-decl"
         | CtxtTypeDefns _ -> "type"
-        | CtxtParen(_, p) -> sprintf "paren(%s)" (stringOfPos p)
+        | CtxtParen(_, p) -> sprintf "paren(%s)" (PositionUtils.stringOfPos p)
         | CtxtMemberHead _ -> "member-head"
         | CtxtMemberBody _ -> "body"
-        | CtxtSeqBlock (b, p, _addBlockEnd) -> sprintf "seqblock(%s, %s)" (match b with FirstInSeqBlock -> "first" | NotFirstInSeqBlock -> "subsequent") (stringOfPos p)
+        | CtxtSeqBlock (b, p, _addBlockEnd) -> sprintf "seqblock(%s, %s)" (match b with FirstInSeqBlock -> "first" | NotFirstInSeqBlock -> "subsequent") (PositionUtils.stringOfPos p)
         | CtxtMatchClauses _ -> "matching"
 
         | CtxtIf _ -> "if"
         | CtxtMatch _ -> "match"
         | CtxtFor _ -> "for"
-        | CtxtWhile p -> sprintf "while(%s)" (stringOfPos p)
+        | CtxtWhile p -> sprintf "while(%s)" (PositionUtils.stringOfPos p)
         | CtxtWhen _ -> "when"
         | CtxtTry _ -> "try"
         | CtxtFun _ -> "fun"
         | CtxtFunction _ -> "function"
 
         | CtxtThen _ -> "then"
-        | CtxtElse p -> sprintf "else(%s)" (stringOfPos p)
-        | CtxtVanilla (p, _) -> sprintf "vanilla(%s)" (stringOfPos p)
+        | CtxtElse p -> sprintf "else(%s)" (PositionUtils.stringOfPos p)
+        | CtxtVanilla (p, _) -> sprintf "vanilla(%s)" (PositionUtils.stringOfPos p)
 
 and AddBlockEnd = AddBlockEnd | NoAddBlockEnd | AddOneSidedBlockEnd
 and FirstInSequence = FirstInSeqBlock | NotFirstInSeqBlock

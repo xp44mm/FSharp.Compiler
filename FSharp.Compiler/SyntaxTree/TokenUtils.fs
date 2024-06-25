@@ -1,22 +1,6 @@
 ﻿module FSharp.Compiler.TokenUtils
 
-
-open System
-open System.Collections.Generic
-open Internal.Utilities.Text.Lexing
-
-open Internal.Utilities.Library
-open FSharp.Compiler.AbstractIL.Diagnostics
-open FSharp.Compiler.DiagnosticsLogger
-open FSharp.Compiler.Features
-open FSharp.Compiler.Lexhelp
-open FSharp.Compiler.ParseHelpers
 open FSharp.Compiler.Parser
-open FSharp.Compiler.UnicodeLexing
-open FSharp.Compiler
-open FSharp.Compiler.PositionUtils
-
-
 
 let isInfix token =
     match token with
@@ -326,4 +310,9 @@ let parenTokensBalance token1 token2 =
     | LESS true, GREATER true
     | BEGIN, END -> true
     | LQUOTE (q1,_), RQUOTE (q2,_) when q1 = q2 -> true
+    | _ -> false
+
+let isControlFlow(token) =
+    match token with
+    | TRY | MATCH | MATCH_BANG | IF | LET _ | FOR | WHILE | WHILE_BANG -> true
     | _ -> false
