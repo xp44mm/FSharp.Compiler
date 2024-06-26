@@ -14,10 +14,23 @@ open FSharp.Compiler.Parser
 open FSharp.Compiler.UnicodeLexing
 open FSharp.Compiler
 
+type AddBlockEnd = 
+    | AddBlockEnd 
+    | NoAddBlockEnd 
+    | AddOneSidedBlockEnd
+
+type FirstInSequence = 
+    | FirstInSeqBlock 
+    | NotFirstInSeqBlock
+
+type LexingModuleAttributes = 
+    | LexingModuleAttributes 
+    | NotLexingModuleAttributes
+
 type Context =
     // Position is position of keyword.
     // bool indicates 'LET' is an offside let that's part of a CtxtSeqBlock where the 'in' is optional
-    | CtxtLetDecl of bool * Position
+    | CtxtLetDecl of blockLet: bool * Position
     | CtxtIf of Position
     | CtxtTry of Position
     | CtxtFun of Position
@@ -28,30 +41,30 @@ type Context =
     | CtxtFor of Position
     | CtxtWhile of Position
     | CtxtWhen of Position
-    | CtxtVanilla of Position * bool // boolean indicates if vanilla started with 'x = ...' or 'x.y = ...'
+    | CtxtVanilla of Position * isLongIdentEquals: bool // boolean indicates if vanilla started with 'x = ...' or 'x.y = ...'
     | CtxtThen of Position
     | CtxtElse of Position
     | CtxtDo of Position
     | CtxtInterfaceHead of Position
     | CtxtTypeDefns of Position * equalsEndPos: Position option // 'type <here> =', not removed when we find the "="
 
-    | CtxtNamespaceHead of Position * token
-    | CtxtModuleHead of Position * token * LexingModuleAttributes * isNested: bool
+    | CtxtNamespaceHead of Position * prevToken: token
+    | CtxtModuleHead of Position * prevToken: token * LexingModuleAttributes * isNested: bool
     | CtxtMemberHead of Position
     | CtxtMemberBody of Position
     // If bool is true then this is "whole file"
     //     module A.B
     // If bool is false, this is a "module declaration"
     //     module A = ...
-    | CtxtModuleBody of Position * bool
+    | CtxtModuleBody of Position * wholeFile: bool
     | CtxtNamespaceBody of Position
     | CtxtException of Position
-    | CtxtParen of token * Position
+    | CtxtParen of leftBegin:token * Position
     // Position is position of following token
     | CtxtSeqBlock of FirstInSequence * Position * AddBlockEnd
     // Indicates we're processing the second part of a match, after the 'with'
     // First bool indicates "was this 'with' followed immediately by a '|'"?
-    | CtxtMatchClauses of bool * Position
+    | CtxtMatchClauses of leadingBar: bool * Position
 
     member c.StartPos =
         match c with
@@ -96,7 +109,4 @@ type Context =
         | CtxtElse p -> sprintf "else(%s)" (PositionUtils.stringOfPos p)
         | CtxtVanilla (p, _) -> sprintf "vanilla(%s)" (PositionUtils.stringOfPos p)
 
-and AddBlockEnd = AddBlockEnd | NoAddBlockEnd | AddOneSidedBlockEnd
-and FirstInSequence = FirstInSeqBlock | NotFirstInSeqBlock
-and LexingModuleAttributes = LexingModuleAttributes | NotLexingModuleAttributes
 

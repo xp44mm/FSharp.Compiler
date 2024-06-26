@@ -40,3 +40,42 @@ let endTokenForACtxt getLastTokenEndRange (ctxt:Context) =
 
     | _ ->
         None
+
+let isBegin (ctxt:Context) =
+    match ctxt with
+    // open-parens of sorts
+    | CtxtParen(TokenLExprParen, _) -> true
+    // seq blocks
+    | CtxtSeqBlock _ -> true
+    // vanillas
+    | CtxtVanilla _ -> true
+    // preserve all other contexts
+    | _ -> false
+
+let isCorrectIndent (undentationLimit:PositionWithColumn) (newCtxt: Context)=
+    let debug = true 
+
+    //if ignoreIndent then true else
+
+    match newCtxt with
+    // Don't bother to check pushes of Vanilla blocks since we've
+    // always already pushed a SeqBlock at this position.
+    | CtxtVanilla _
+    // String interpolation inner expressions are not limited (e.g. multiline strings)
+    | CtxtParen((INTERP_STRING_BEGIN_PART _ | INTERP_STRING_PART _),_) -> true
+
+    | _ ->
+        //let p1 = OffsideStack.undentationLimit newCtxt offsideStack
+        let c2 = newCtxt.StartCol
+        let isCorrectIndent = c2 >= undentationLimit.Column
+
+        if not isCorrectIndent then
+            let msg =
+                (if debug then
+                    sprintf "possible incorrect indentation: this token is offside of context at position %s, newCtxt = %A, newCtxtPos = %s, c1 = %d, c2 = %d"
+                        (PositionUtils.warningStringOfPosition undentationLimit.Position) newCtxt (PositionUtils.stringOfPos newCtxt.StartPos) undentationLimit.Column c2
+                    else
+                    FSComp.SR.lexfltTokenIsOffsideOfContextStartedEarlier(PositionUtils.warningStringOfPosition undentationLimit.Position))
+            failwith msg
+
+        true

@@ -41,3 +41,55 @@ let isAdjacent (leftTokenTup: TokenTup) (rightTokenTup: TokenTup) =
     let lparenStartPos = startPosOfTokenTup rightTokenTup
     let tokenEndPos = leftTokenTup.LexbufState.EndPos
     tokenEndPos = lparenStartPos
+
+let isAdjacentLBrack (tokenTup: TokenTup) (lookaheadTokenTup: TokenTup) =
+    match lookaheadTokenTup.Token with
+    | LBRACK -> isAdjacent tokenTup lookaheadTokenTup
+    | _ -> false
+
+let nextTokenIsAdjacentLParen (tokenTup: TokenTup) (lookaheadTokenTup: TokenTup) =
+    match lookaheadTokenTup.Token with
+    | LPAREN -> isAdjacent tokenTup lookaheadTokenTup
+    | _ -> false
+
+let isSameLine (tokenTup: TokenTup) (nextTokenTup: TokenTup) =
+    match tokenTup.Token with
+    | EOF _ -> false
+    | _ -> 
+        let peekTokenPos = startPosOfTokenTup nextTokenTup
+        let tokenStartPos = startPosOfTokenTup tokenTup
+        peekTokenPos.OriginalLine = tokenStartPos.OriginalLine
+
+let isControlFlowOrNotSameLine (tokenTup: TokenTup) (nextTokenTup: TokenTup) =
+    match tokenTup.Token with
+    | EOF _ -> false
+    | _ ->
+        not (isSameLine(tokenTup) nextTokenTup) || TokenUtils.isControlFlow(nextTokenTup.Token)
+
+// Look for '=' or '.Id.id.id = ' after an identifier
+let isLongIdentEquals popNextTokenTup delayToken (tokenTup: TokenTup) =
+    match tokenTup.Token with
+    | GLOBAL
+    | IDENT _ ->
+        let rec loop() =
+            let tokenTup: TokenTup = popNextTokenTup()
+            let res =
+                match tokenTup.Token with
+                | EOF _ -> false
+                | DOT ->
+                    let tokenTup = popNextTokenTup()
+                    let res =
+                        match tokenTup.Token with
+                        | EOF _ -> false
+                        | IDENT _ -> loop()
+                        | _ -> false
+                    delayToken tokenTup
+                    res
+                | EQUALS ->
+                    true
+                | _ -> false
+            delayToken tokenTup
+            res
+        loop()
+    | _ -> false
+
