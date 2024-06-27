@@ -138,6 +138,8 @@ token $app   // Note: also called HIGH_PRECEDENCE_APP
 token $tyapp // Note: also called HIGH_PRECEDENCE_TYAPP 
 ```
 
+前缀`O`可能是指Offside的缩写。
+
 Note: The following tokens are also used in the Microsoft F# implementation. They are translations of the corresponding input tokens and help provide better error messages for lightweight syntax code:
 
 ```F#
