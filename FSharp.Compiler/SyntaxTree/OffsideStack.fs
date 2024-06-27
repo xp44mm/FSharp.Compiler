@@ -19,34 +19,42 @@ open FSharp.Compiler
 //          join x in ys ... }'
 // 'query { for ... do
 //          join x in ys ... }'
+
+// 当前位置是否在序列表达式中
+// CtxtVanilla ? [ CtxtSeqBlock CtxtDo CtxtFor ] * CtxtParen
 let detectJoinInCtxt (stack: Context list) =
     let rec check s =
-            match s with
-            | CtxtParen(LBRACE _, _) :: _ -> true
-            | (CtxtSeqBlock _ | CtxtDo _ | CtxtFor _) :: rest -> check rest
-            | _ -> false
+        match s with
+        | CtxtParen(LBRACE _, _) :: _ -> true
+        | (CtxtSeqBlock _ | CtxtDo _ | CtxtFor _) :: rest -> check rest
+        | _ -> false
     match stack with
     | CtxtVanilla _ :: rest -> check rest
     | _ -> false
 
-///获得缩进的位置
+///
 let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsideStack:Context list) =
     //(strict:bool) (ignoreIndent:bool) (tokenTup: TokenTup) 
     let rec loop (strict:bool) (stack:Context list) =
         match newCtxt, stack with
         | _, [] -> PositionWithColumn(newCtxt.StartPos, -1)
 
+        | _, CtxtSeqBlock _ :: rest when not strict -> loop strict rest
+        | _, CtxtParen _ :: rest when not strict -> loop strict rest
+
         // ignore Vanilla because a SeqBlock is always coming
         | _, CtxtVanilla _ :: rest -> loop strict rest
 
+        // CtxtSeqBlock CtxtDo CtxtSeqBlock (CtxtTypeDefns | CtxtModuleBody )
+        // do 有歧义，确定他不是组合在for while 后面配合的 do
         | CtxtSeqBlock(FirstInSeqBlock, _, _), (CtxtDo _ as limitCtxt) :: CtxtSeqBlock _ :: (CtxtTypeDefns _ | CtxtModuleBody _) :: _ ->
             PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol + 1)
 
+        // type
+        // with
+        // ...
         | CtxtSeqBlock(FirstInSeqBlock, _, _), CtxtWithAsAugment _ :: (CtxtTypeDefns _ as limitCtxt) :: _ ->
             PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol + 1)
-
-        | _, CtxtSeqBlock _ :: rest when not strict -> loop strict rest
-        | _, CtxtParen _ :: rest when not strict -> loop strict rest
 
         // 'begin match' limited by minimum of two
         // '(match' limited by minimum of two
@@ -54,6 +62,7 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
                     -> if ctxt1.StartCol <= ctxt2.StartCol
                         then PositionWithColumn(ctxt1.StartPos, ctxt1.StartCol)
                         else PositionWithColumn(ctxt2.StartPos, ctxt2.StartCol)
+
         // Insert this rule to allow
         //     begin match 1 with
         //     | 1 -> ()
@@ -69,29 +78,31 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
                         then PositionWithColumn(ctxt1.StartPos, ctxt1.StartCol)
                         else PositionWithColumn(ctxt2.StartPos, ctxt2.StartCol)
 
-            // 'let ... = function' limited by 'let', precisely
-            // This covers the common form
-            //
-            //     let f x = function
-            //     | Case1 -> ...
-            //     | Case2 -> ...
+        // 'let ... = function' limited by 'let', precisely
+        // This covers the common form
+        //
+        //     let f x = function
+        //     | Case1 -> ...
+        //     | Case2 -> ...
         | CtxtMatchClauses _, CtxtFunction _ :: CtxtSeqBlock _ :: (CtxtLetDecl _ as limitCtxt) :: _rest
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
         // Otherwise 'function ...' places no limit until we hit a CtxtLetDecl etc... (Recursive)
         | CtxtMatchClauses _, CtxtFunction _ :: rest
+                    // CtxtMatchClauses CtxtFunction [ CtxtSeqBlock CtxtParen ] * CtxtLetDecl
                     -> loop false rest
-
+        
         // 'try ... with' limited by 'try'
-        | _, (CtxtMatchClauses _ :: (CtxtTry _ as limitCtxt) :: _rest)
+        | _, CtxtMatchClauses _ :: (CtxtTry _ as limitCtxt) :: _rest
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
-        // 'match ... with' limited by 'match' (given RelaxWhitespace2)
-        | _, (CtxtMatchClauses _ :: (CtxtMatch _ as limitCtxt) :: _rest) when relaxWhitespace2
+        // 'match ... with' limited by 'match' (given RelaxWhitespace2) 给出
+        | _, CtxtMatchClauses _ :: (CtxtMatch _ as limitCtxt) :: _rest when relaxWhitespace2
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
         // 'fun ->' places no limit until we hit a CtxtLetDecl etc... (Recursive)
         | _, CtxtFun _ :: rest
+                    // anyCtxt CtxtFun [ CtxtSeqBlock CtxtParen ] * CtxtLetDecl
                     -> loop false rest
 
         // 'let ... = f ... begin'  limited by 'let' (given RelaxWhitespace2)
@@ -109,12 +120,16 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         // 'let x = { y =' limited by 'let'  (given RelaxWhitespace2) etc.
         // 'let x = {| y =' limited by 'let' (given RelaxWhitespace2) etc.
         // Test here: Tests/FSharp.Compiler.ComponentTests/Conformance/LexicalFiltering/Basic/OffsideExceptions.fs, RelaxWhitespace2
+        // 等号后面是要增加的上下文，紧y前CtxtSeqBlock，紧左括号前CtxtParen (TokenLExprParen, _)
+        // [ CtxtSeqBlock CtxtParen ] * CtxtLetDecl
         | _, CtxtSeqBlock _ :: CtxtParen (TokenLExprParen, _) :: rest when relaxWhitespace2
                     -> loop false rest
 
         // 'f ...{' places no limit until we hit a CtxtLetDecl etc...
         // 'f ...[' places no limit until we hit a CtxtLetDecl etc...
         // 'f ...[|' places no limit until we hit a CtxtLetDecl etc...
+        // CtxtSeqBlock? CtxtParen CtxtVanilla? CtxtSeqBlock
+        // rest [ CtxtSeqBlock CtxtParen ] * CtxtLetDecl
         | _, CtxtParen ((LBRACE _ | LBRACK | LBRACK_BAR), _) :: CtxtSeqBlock _ :: rest
         | _, CtxtParen ((LBRACE _ | LBRACK | LBRACK_BAR), _) :: CtxtVanilla _ :: CtxtSeqBlock _ :: rest
         | _, CtxtSeqBlock _ :: CtxtParen((LBRACE _ | LBRACK | LBRACK_BAR), _) :: CtxtVanilla _ :: CtxtSeqBlock _ :: rest
@@ -126,6 +141,7 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         //   x + x
         // This is a serious thing to allow, but is required since there is no "return" in this language.
         // Without it there is no way of escaping special cases in large bits of code without indenting the main case.
+        // CtxtSeqBlock CtxtElse CtxtIf
         | CtxtSeqBlock _, CtxtElse _ :: (CtxtIf _ as limitCtxt) :: _rest
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
@@ -137,7 +153,9 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         //           type ...
         //           with ...
         //           end
-        | CtxtWithAsAugment _, (CtxtInterfaceHead _ | CtxtMemberHead _ | CtxtException _ | CtxtTypeDefns _ as limitCtxt :: _rest)
+        // 在 with 和 end 之间是 CtxtWithAsAugment
+        // CtxtWithAsAugment (CtxtInterfaceHead | CtxtMemberHead | CtxtException | CtxtTypeDefns)
+        | CtxtWithAsAugment _, (CtxtInterfaceHead _ | CtxtMemberHead _ | CtxtException _ | CtxtTypeDefns _ as limitCtxt) :: _rest
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
         // Permit undentation via parentheses (or begin/end) following a 'then', 'else' or 'do':
@@ -162,9 +180,10 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         //           ...           <-- this is before the "with"
         //         end
 
+        // (CtxtWithAsAugment | CtxtThen | CtxtElse | CtxtDo )
+        // [ CtxtSeqBlock CtxtParen ] * AnyCtxt
         | _, (CtxtWithAsAugment _ | CtxtThen _ | CtxtElse _ | CtxtDo _ ) :: rest
                     -> loop false rest
-
 
         // '... (function ->' places no limit until we hit a CtxtLetDecl etc....  (Recursive)
         //
@@ -183,9 +202,12 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         | _, CtxtFunction _ :: rest
                     -> loop false rest
 
-        // 'module ... : sig'    limited by 'module'
+        // 'module ... : sig'    limited by 'module' 怎么是冒号
         // 'module ... : struct' limited by 'module'
         // 'module ... : begin'  limited by 'module'
+        // CtxtParen CtxtSeqBlock CtxtModuleBody
+        | _, CtxtParen ((SIG | STRUCT | BEGIN), _) :: CtxtSeqBlock _ :: (CtxtModuleBody (_, false) as limitCtxt) :: _
+
         // 'if ... then ('       limited by 'if'
         // 'if ... then {'       limited by 'if'
         // 'if ... then ['       limited by 'if'
@@ -194,7 +216,7 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         // 'if ... else {'       limited by 'if'
         // 'if ... else ['       limited by 'if'
         // 'if ... else [|'       limited by 'if'
-        | _, CtxtParen ((SIG | STRUCT | BEGIN), _) :: CtxtSeqBlock _ :: (CtxtModuleBody (_, false) as limitCtxt) :: _
+        // CtxtParen CtxtSeqBlock（CtxtThen|CtxtElse) CtxtIf
         | _, CtxtParen ((BEGIN | LPAREN | LBRACK | LBRACE _ | LBRACE_BAR | LBRACK_BAR), _) :: CtxtSeqBlock _ :: CtxtThen _ :: (CtxtIf _ as limitCtxt) :: _
         | _, CtxtParen ((BEGIN | LPAREN | LBRACK | LBRACE _ | LBRACE_BAR | LBRACK_BAR | LBRACK_LESS), _) :: CtxtSeqBlock _ :: CtxtElse _ :: (CtxtIf _ as limitCtxt) :: _
 
@@ -203,25 +225,35 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         // 'f ... ['  in seqblock     limited by 'f'
         // 'f ... [|' in seqblock      limited by 'f'
         // 'f ... Foo<' in seqblock      limited by 'f'
+        //seq {
+        //    yield! 0
+        //}
+        // CtxtParen CtxtVanilla CtxtSeqBlock
         | _, CtxtParen ((BEGIN | LPAREN | LESS true | LBRACK | LBRACK_BAR), _) :: CtxtVanilla _ :: (CtxtSeqBlock _ as limitCtxt) :: _
 
         // 'type C = class ... '       limited by 'type'
         // 'type C = interface ... '       limited by 'type'
         // 'type C = struct ... '       limited by 'type'
+        // CtxtParen CtxtSeqBlock CtxtTypeDefns
         | _, CtxtParen ((CLASS | STRUCT | INTERFACE), _) :: CtxtSeqBlock _ :: (CtxtTypeDefns _ as limitCtxt) ::  _
             -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol + 1)
 
         // 'type C(' limited by 'type'
+        // CtxtSeqBlock CtxtParen CtxtTypeDefns
         | _, CtxtSeqBlock _ :: CtxtParen(LPAREN, _) :: (CtxtTypeDefns _ as limitCtxt) :: _
         // 'static member C(' limited by 'static', likewise others
+        // CtxtSeqBlock CtxtParen CtxtMemberHead
         | _, CtxtSeqBlock _ :: CtxtParen(LPAREN, _) :: (CtxtMemberHead _ as limitCtxt) :: _
         // 'static member P with get() = ' limited by 'static', likewise others
+        // CtxtWithAsLet CtxtMemberHead
         | _, CtxtWithAsLet _ :: (CtxtMemberHead _ as limitCtxt) :: _
                 when relaxWhitespace
                 -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol + 1)
 
         // REVIEW: document these
+        // CtxtSeqBlock CtxtParen CtxtVanilla CtxtSeqBlock
         | _, CtxtSeqBlock _ :: CtxtParen((BEGIN | LPAREN | LBRACK | LBRACK_BAR), _) :: CtxtVanilla _ :: (CtxtSeqBlock _ as limitCtxt) :: _
+        // CtxtSeqBlock CtxtParen CtxtSeqBlock (CtxtTypeDefns | CtxtLetDecl | CtxtMemberBody | CtxtWithAsLet)
         | CtxtSeqBlock _, CtxtParen ((BEGIN | LPAREN | LBRACE _ | LBRACE_BAR | LBRACK | LBRACK_BAR), _) :: CtxtSeqBlock _ :: (CtxtTypeDefns _ | CtxtLetDecl _ | CtxtMemberBody _ | CtxtWithAsLet _ as limitCtxt) :: _
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol + 1)
 
@@ -231,6 +263,7 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         //           then expr
         //           elif expr
         //           else expr
+        // (CtxtIf | CtxtElse | CtxtThen) CtxtIf
         | (CtxtIf _ | CtxtElse _ | CtxtThen _), (CtxtIf _ as limitCtxt) :: _rest
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
@@ -238,19 +271,23 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         //           while  ...
         //           do expr
         //           done
+        // CtxtDo [CtxtFor CtxtWhile]
         | CtxtDo _, (CtxtFor _ | CtxtWhile _ as limitCtxt) :: _rest
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
 
 
         // These contexts all require indentation by at least one space
-        | _, (CtxtInterfaceHead _ | CtxtNamespaceHead _ | CtxtModuleHead _ | CtxtException _ | CtxtModuleBody (_, false) | CtxtIf _ | CtxtWithAsLet _ | CtxtLetDecl _ | CtxtMemberHead _ | CtxtMemberBody _ as limitCtxt :: _)
+        // [ CtxtInterfaceHead CtxtNamespaceHead CtxtModuleHead CtxtModuleBody CtxtMemberHead CtxtMemberBody CtxtException 
+        //   CtxtWithAsLet CtxtLetDecl CtxtIf ]
+        | _, (CtxtInterfaceHead _ | CtxtNamespaceHead _ | CtxtModuleHead _ | CtxtException _ | CtxtModuleBody (_, false) | CtxtIf _ | CtxtWithAsLet _ | CtxtLetDecl _ | CtxtMemberHead _ | CtxtMemberBody _ as limitCtxt) :: _
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol + 1)
 
         // These contexts can have their contents exactly aligning
-        | _, (CtxtParen _ | CtxtFor _ | CtxtWhen _ | CtxtWhile _ | CtxtTypeDefns _ | CtxtMatch _ | CtxtModuleBody (_, true) | CtxtNamespaceBody _ | CtxtTry _ | CtxtMatchClauses _ | CtxtSeqBlock _ as limitCtxt :: _)
+        // [ CtxtParen CtxtFor CtxtWhen CtxtWhile CtxtTypeDefns CtxtMatch CtxtModuleBody CtxtNamespaceBody 
+        //   CtxtTry CtxtMatchClauses CtxtSeqBlock ]
+        | _, (CtxtParen _ | CtxtFor _ | CtxtWhen _ | CtxtWhile _ | CtxtTypeDefns _ | CtxtMatch _ | CtxtModuleBody (_, true) | CtxtNamespaceBody _ | CtxtTry _ | CtxtMatchClauses _ | CtxtSeqBlock _ as limitCtxt) :: _
                     -> PositionWithColumn(limitCtxt.StartPos, limitCtxt.StartCol)
     loop true offsideStack
-
 
 let popCtxt debug relaxWhitespace2 getOffsideStack setOffsideStack =
     let rec loop () =
@@ -262,19 +299,24 @@ let popCtxt debug relaxWhitespace2 getOffsideStack setOffsideStack =
             // For CtxtMatchClauses, also pop the CtxtMatch, if present (we expect it always will be).
             if relaxWhitespace2 then
                 match h, rest with
+                // CtxtMatchClauses CtxtMatch
                 | CtxtMatchClauses _ , CtxtMatch _ :: _ -> loop ()
                 | _ -> ()
     loop ()
 
+// 结束右token与配对上下文
 let tokenBalancesHeadContext (token:token) (stack: Context list) =
     match token, stack with
     | END, CtxtWithAsAugment _ :: _
     | (ELSE | ELIF), CtxtIf _ :: _
     | DONE, CtxtDo _ :: _
+
     // WITH balances except in the following contexts.... Phew - an overused keyword!
-    | WITH, ( (CtxtMatch _ | CtxtException _ | CtxtMemberHead _ | CtxtInterfaceHead _ | CtxtTry _ | CtxtTypeDefns _ | CtxtMemberBody _) :: _
-                            // This is the nasty record/object-expression case
-                            | CtxtSeqBlock _ :: CtxtParen((LBRACE _ | LBRACE_BAR), _) :: _ )
+    | WITH, (CtxtMatch _ | CtxtException _ | CtxtMemberHead _ | CtxtInterfaceHead _ | CtxtTry _ | CtxtTypeDefns _ | CtxtMemberBody _) :: _
+    // This is the nasty record/object-expression case
+    // { point with x = x }
+    | WITH, CtxtSeqBlock _ :: CtxtParen((LBRACE _ | LBRACE_BAR), _) :: _ 
+
     | FINALLY, CtxtTry _ :: _ ->
         true
 
@@ -288,7 +330,7 @@ let tokenBalancesHeadContext (token:token) (stack: Context list) =
     //          join x in ys ... }'
     // 'query { for ... do
     //          join x in ys ... }'
-    | IN, stack when detectJoinInCtxt stack ->
+    | IN, stack when detectJoinInCtxt stack -> // 如果能找到左括号
         true
 
     // NOTE: ;; does not terminate a 'namespace' body.
@@ -298,6 +340,7 @@ let tokenBalancesHeadContext (token:token) (stack: Context list) =
     | SEMICOLON_SEMICOLON, CtxtSeqBlock _ :: CtxtModuleBody (_, true) :: _ ->
         true
 
+    //左右括号互相配对
     | t2, CtxtParen(t1, _) :: _ ->
         TokenUtils.parenTokensBalance t1 t2
 
@@ -334,6 +377,7 @@ let tokenForcesHeadContextClosure (token:token) (stack:Context list) =
     match token with
     | EOF _ -> true
     | SEMICOLON_SEMICOLON -> not (tokenBalancesHeadContext token stack)
+
     | TokenRExprParen
     | ELSE
     | ELIF
@@ -342,8 +386,10 @@ let tokenForcesHeadContextClosure (token:token) (stack:Context list) =
     | WITH
     | FINALLY
     | INTERP_STRING_PART _
-    | INTERP_STRING_END _ ->
+    | INTERP_STRING_END _ 
+        ->
         not (tokenBalancesHeadContext token stack) &&
+
         // Only close the context if some context is going to match at some point in the stack.
         // If none match, the token will go through, and error recovery will kick in in the parser and report the extra token,
         // and then parsing will continue. Closing all the contexts will not achieve much except aid in a catastrophic failure.
@@ -354,6 +400,7 @@ let tokenForcesHeadContextClosure (token:token) (stack:Context list) =
 
 // ... <<< code with unmatched ( or [ or { or [| >>> ... "type" ...
 // We want a TYPE or MODULE keyword to close any currently-open "expression" contexts, as though there were close delimiters in the file, so:
+// 查找 ( CtxtParen((BEGIN|STRUCT), _) :: CtxtSeqBlock ) ? (CtxtNamespaceBody | CtxtModuleBody )
 let nextOuterMostInterestingContextIsNamespaceOrModule (offsideStack:Context list) =
     let rec loop offsideStack =
         match offsideStack with
@@ -361,9 +408,11 @@ let nextOuterMostInterestingContextIsNamespaceOrModule (offsideStack:Context lis
         | _ :: (CtxtNamespaceBody _ | CtxtModuleBody _) :: _ -> true
         // The context pair below is created a namespace/module scope when user explicitly uses 'begin'...'end',
         // and these can legally contain type definitions, so ignore this combo as uninteresting and recurse deeper
-        | _ :: CtxtParen((BEGIN|STRUCT), _) :: CtxtSeqBlock _ :: _ -> loop(offsideStack.Tail.Tail)
+        | _ :: CtxtParen((BEGIN|STRUCT), _) :: CtxtSeqBlock _ :: rest -> loop rest // (offsideStack.Tail.Tail)
+
         // at the top of the stack there is an implicit module
         | _ :: [] -> true
+
         // anything else is a non-namespace/module
         | _ -> false
     loop offsideStack
@@ -617,6 +666,7 @@ let insertHighPrecedenceApp
     delayToken tokenTup
     true
 
+//正确重新划分紧挨着的tokens
 let rulesForBothSoftWhiteAndHardWhite
     (pool:TokenTupPool)
     popNextTokenTup
@@ -650,7 +700,11 @@ let rulesForBothSoftWhiteAndHardWhite
         insertHighPrecedenceApp tokenTup
 
     // Insert HIGH_PRECEDENCE_TYAPP if needed
-    | DELEGATE | IDENT _ | IEEE64 _ | IEEE32 _ | DECIMAL _ | INT8 _ | INT16 _ | INT32 _ | INT64 _ | NATIVEINT _ | UINT8 _ | UINT16 _ | UINT32 _ | UINT64 _ | UNATIVEINT _ | BIGNUM _ when peekAdjacentTypars false tokenTup ->
+    // measure
+    | DELEGATE | IDENT _ | IEEE64 _ | IEEE32 _ | DECIMAL _ | INT8 _ | INT16 _ | INT32 _ | INT64 _ | NATIVEINT _ 
+    | UINT8 _ | UINT16 _ | UINT32 _ | UINT64 _ | UNATIVEINT _ | BIGNUM _ 
+        when peekAdjacentTypars false tokenTup ->
+
         let lessTokenTup = popNextTokenTup()
         delayToken (pool.UseLocation(lessTokenTup, match lessTokenTup.Token with LESS _ -> LESS true | _ -> failwith "unreachable"))
 
@@ -665,43 +719,79 @@ let rulesForBothSoftWhiteAndHardWhite
     // because of processing rule underneath this.
     | DOT_DOT_HAT ->
         let hatPos = LexbufState(tokenTup.EndPos.ShiftColumnBy(-1), tokenTup.EndPos, false)
-        delayToken(let rented = pool.Rent() in rented.Token <- INFIX_AT_HAT_OP("^"); rented.LexbufState <- hatPos; rented.LastTokenPos <- tokenTup.LastTokenPos; rented)
-        delayToken(pool.UseShiftedLocation(tokenTup, DOT_DOT, 0, -1))
+        // 插入 ^
+        delayToken(
+            let rented = pool.Rent()
+            rented.Token <- INFIX_AT_HAT_OP("^")
+            rented.LexbufState <- hatPos
+            rented.LastTokenPos <- tokenTup.LastTokenPos
+            rented
+            )
+        // 插入 ..
+        delayToken(
+            pool.UseShiftedLocation(tokenTup, DOT_DOT, 0, -1)
+            )
+
         pool.Return tokenTup
         true
 
     // Split this token to allow "1..2" for range specification
     | INT32_DOT_DOT (i, v) ->
         let dotDotPos = LexbufState(tokenTup.EndPos.ShiftColumnBy(-2), tokenTup.EndPos, false)
-        delayToken(let rented = pool.Rent() in rented.Token <- DOT_DOT; rented.LexbufState <- dotDotPos; rented.LastTokenPos <- tokenTup.LastTokenPos; rented)
+
+        // 插入 ..
+        delayToken(
+            let rented = pool.Rent()
+            rented.Token <- DOT_DOT
+            rented.LexbufState <- dotDotPos
+            rented.LastTokenPos <- tokenTup.LastTokenPos
+            rented)
+        // 插入 int32
         delayToken(pool.UseShiftedLocation(tokenTup, INT32(i, v), 0, -2))
+
         pool.Return tokenTup
+
         true
+
     // Split @>. and @@>. into two
     | RQUOTE_DOT (s, raw) ->
         let dotPos = LexbufState(tokenTup.EndPos.ShiftColumnBy(-1), tokenTup.EndPos, false)
-        delayToken(let rented = pool.Rent() in rented.Token <- DOT; rented.LexbufState <- dotPos; rented.LastTokenPos <- tokenTup.LastTokenPos; rented)
+        // .
+        delayToken(
+            let rented = pool.Rent()
+            rented.Token <- DOT
+            rented.LexbufState <- dotPos
+            rented.LastTokenPos <- tokenTup.LastTokenPos
+            rented
+            )
+        // @> and @@>
         delayToken(pool.UseShiftedLocation(tokenTup, RQUOTE(s, raw), 0, -1))
+        //归还
         pool.Return tokenTup
         true
 
+    // 正负号合并进后跟着相邻的常数
     | MINUS | PLUS_MINUS_OP _ | PERCENT_OP _ | AMP | AMP_AMP
-        when ((match tokenTup.Token with
+        when ((match tokenTup.Token with // 过滤掉前两种情况
                 | PLUS_MINUS_OP s -> (s = "+") || (s = "+.") || (s = "-.")
                 | PERCENT_OP s -> (s = "%") || (s = "%%")
                 | _ -> true) &&
                 nextTokenIsAdjacent tokenTup &&
-                not (prevWasAtomicEnd && (tokenTup.LastTokenPos = TokenTupUtils.startPosOfTokenTup tokenTup))) ->
+                not (prevWasAtomicEnd && 
+                //0长度
+                (tokenTup.LastTokenPos = TokenTupUtils.startPosOfTokenTup tokenTup))) ->
 
         let plus =
             match tokenTup.Token with
             | PLUS_MINUS_OP s -> (s = "+")
             | _ -> false
+
         let plusOrMinus =
             match tokenTup.Token with
             | PLUS_MINUS_OP s -> (s = "+")
             | MINUS -> true
             | _ -> false
+
         let nextTokenTup = popNextTokenTup()
 
         /// Merge the location of the prefix token and the literal
@@ -710,11 +800,12 @@ let rulesForBothSoftWhiteAndHardWhite
             rented.Token <- tok
             rented.LexbufState <- LexbufState(tokenTup.LexbufState.StartPos, nextTokenTup.LexbufState.EndPos, nextTokenTup.LexbufState.PastEOF)
             rented.LastTokenPos <- tokenTup.LastTokenPos
+
             delayToken(rented)
             pool.Return nextTokenTup
             pool.Return tokenTup
 
-        let noMerge() =
+        let noMerge () =
             let tokenName =
                 match tokenTup.Token with
                 | PLUS_MINUS_OP s
@@ -725,17 +816,29 @@ let rulesForBothSoftWhiteAndHardWhite
                 | _ -> failwith "unreachable"
             let token = ADJACENT_PREFIX_OP tokenName
             delayToken nextTokenTup
-            delayToken (pool.UseLocation(tokenTup, token))
+            delayToken (pool.UseLocation(tokenTup, token)) // 修改成 ADJACENT_PREFIX_OP
             pool.Return tokenTup
 
         if plusOrMinus then
             match nextTokenTup.Token with
-            | INT8(v, bad) -> delayMergedToken(INT8((if plus then v else -v), (plus && bad))) // note: '-' makes a 'bad' max int 'good'. '+' does not
-            | INT16(v, bad) -> delayMergedToken(INT16((if plus then v else -v), (plus && bad))) // note: '-' makes a 'bad' max int 'good'. '+' does not
-            | INT32(v, bad) -> delayMergedToken(INT32((if plus then v else -v), (plus && bad))) // note: '-' makes a 'bad' max int 'good'. '+' does not
-            | INT32_DOT_DOT(v, bad) -> delayMergedToken(INT32_DOT_DOT((if plus then v else -v), (plus && bad))) // note: '-' makes a 'bad' max int 'good'. '+' does not
-            | INT64(v, bad) -> delayMergedToken(INT64((if plus then v else -v), (plus && bad))) // note: '-' makes a 'bad' max int 'good'. '+' does not
-            | NATIVEINT(v, bad) -> delayMergedToken(NATIVEINT((if plus then v else -v), (plus && bad))) // note: '-' makes a 'bad' max int 'good'. '+' does not
+            | INT8(v, bad) -> 
+                // note: '-' makes a 'bad' max int 'good'. '+' does not
+                delayMergedToken(INT8((if plus then v else -v), (plus && bad))) 
+            | INT16(v, bad) -> 
+                // note: '-' makes a 'bad' max int 'good'. '+' does not
+                delayMergedToken(INT16((if plus then v else -v), (plus && bad))) 
+            | INT32(v, bad) -> 
+                // note: '-' makes a 'bad' max int 'good'. '+' does not
+                delayMergedToken(INT32((if plus then v else -v), (plus && bad))) 
+            | INT32_DOT_DOT(v, bad) -> 
+                // note: '-' makes a 'bad' max int 'good'. '+' does not
+                delayMergedToken(INT32_DOT_DOT((if plus then v else -v), (plus && bad))) 
+            | INT64(v, bad) -> 
+                // note: '-' makes a 'bad' max int 'good'. '+' does not
+                delayMergedToken(INT64((if plus then v else -v), (plus && bad))) 
+            | NATIVEINT(v, bad) -> 
+                // note: '-' makes a 'bad' max int 'good'. '+' does not
+                delayMergedToken(NATIVEINT((if plus then v else -v), (plus && bad))) 
             | IEEE32 v -> delayMergedToken(IEEE32(if plus then v else -v))
             | IEEE64 v -> delayMergedToken(IEEE64(if plus then v else -v))
             | DECIMAL v -> delayMergedToken(DECIMAL(if plus then v else System.Decimal.op_UnaryNegation v))
@@ -774,11 +877,13 @@ let pushCtxtSeqBlockAt
             | AddBlockEnd -> true
             | _ -> false
 
+        // 配对结束块
         if addBlockBegin then
             if debug then dprintf "--> insert OBLOCKBEGIN \n"
             let ctxtToken = if pushed then tokenTup else fallbackToken
             delayToken(pool.UseLocation(ctxtToken, OBLOCKBEGIN))
 
+/// 插入token 并且offsideStack
 let tokenFetch 
     (pool:TokenTupPool)
     peekInitial
@@ -822,14 +927,15 @@ let tokenFetch
 
     let debug = true
     let token = tokenTup.Token
-    match token, offsideStack with
+
     // inserted faux tokens need no other processing
-    | _ when tokensThatNeedNoProcessingCount > 0 ->
+    if tokensThatNeedNoProcessingCount > 0 then
         //tokensThatNeedNoProcessingCount <- tokensThatNeedNoProcessingCount - 1
         decrTokensThatNeedNoProcessingCount()
         returnToken tokenLexbufState token
 
-    | _ when tokenForcesHeadContextClosure token offsideStack ->
+    // 只需补一层，reprocess执行到这一段后继续补齐end token，弹出ctxt
+    if tokenForcesHeadContextClosure token offsideStack then
         let ctxt = offsideStack.Head
         if debug then dprintf "IN/ELSE/ELIF/DONE/RPAREN/RBRACE/END/INTERP at %a terminates context at position %a\n" PositionUtils.outputPos tokenStartPos PositionUtils.outputPos ctxt.StartPos
         popCtxt()
@@ -837,13 +943,14 @@ let tokenFetch
         | Some tok ->
             if debug then dprintf "--> inserting %+A\n" tok
             insertToken tok
-        | _ ->
+        | None ->
             reprocess()
 
+    match token, offsideStack with
     // reset on ';;' rule. A ';;' terminates ALL entries
     | SEMICOLON_SEMICOLON, [] ->
         if debug then dprintf ";; scheduling a reset\n"
-        delayToken(pool.UseLocation(tokenTup, ORESET))
+        delayToken(pool.UseLocation(tokenTup, ORESET)) // 放到;;的后面
         returnToken tokenLexbufState SEMICOLON_SEMICOLON
 
     | ORESET, [] ->

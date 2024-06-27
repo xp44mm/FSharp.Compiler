@@ -17,6 +17,7 @@ open FSharp.Compiler
 let rootCtxt (startPos:Position) = 
     CtxtSeqBlock(FirstInSeqBlock, startPos, NoAddBlockEnd)
 
+/// 上下文的结束token，如果有
 let endTokenForACtxt getLastTokenEndRange (ctxt:Context) =
     match ctxt with
     | CtxtFun _
@@ -52,6 +53,7 @@ let isBegin (ctxt:Context) =
     // preserve all other contexts
     | _ -> false
 
+/// 
 let isCorrectIndent (undentationLimit:PositionWithColumn) (newCtxt: Context)=
     let debug = true 
 
@@ -60,6 +62,7 @@ let isCorrectIndent (undentationLimit:PositionWithColumn) (newCtxt: Context)=
     match newCtxt with
     // Don't bother to check pushes of Vanilla blocks since we've
     // always already pushed a SeqBlock at this position.
+    /// 香草总是跟着 SeqBlock?
     | CtxtVanilla _
     // String interpolation inner expressions are not limited (e.g. multiline strings)
     | CtxtParen((INTERP_STRING_BEGIN_PART _ | INTERP_STRING_PART _),_) -> true
@@ -71,11 +74,12 @@ let isCorrectIndent (undentationLimit:PositionWithColumn) (newCtxt: Context)=
 
         if not isCorrectIndent then
             let msg =
-                (if debug then
+                let offsidePos = PositionUtils.warningStringOfPosition undentationLimit.Position
+                if debug then
                     sprintf "possible incorrect indentation: this token is offside of context at position %s, newCtxt = %A, newCtxtPos = %s, c1 = %d, c2 = %d"
-                        (PositionUtils.warningStringOfPosition undentationLimit.Position) newCtxt (PositionUtils.stringOfPos newCtxt.StartPos) undentationLimit.Column c2
-                    else
-                    FSComp.SR.lexfltTokenIsOffsideOfContextStartedEarlier(PositionUtils.warningStringOfPosition undentationLimit.Position))
+                        offsidePos newCtxt (PositionUtils.stringOfPos newCtxt.StartPos) undentationLimit.Column c2
+                else
+                    FSComp.SR.lexfltTokenIsOffsideOfContextStartedEarlier (offsidePos)
             failwith msg
 
         true

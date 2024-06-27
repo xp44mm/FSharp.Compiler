@@ -23,6 +23,7 @@ type FirstInSequence =
     | FirstInSeqBlock 
     | NotFirstInSeqBlock
 
+///module [<>]? name
 type LexingModuleAttributes = 
     | LexingModuleAttributes 
     | NotLexingModuleAttributes
@@ -59,7 +60,10 @@ type Context =
     | CtxtModuleBody of Position * wholeFile: bool
     | CtxtNamespaceBody of Position
     | CtxtException of Position
+
+    //paren 有明确begin/end对的环境
     | CtxtParen of leftBegin:token * Position
+
     // Position is position of following token
     | CtxtSeqBlock of FirstInSequence * Position * AddBlockEnd
     // Indicates we're processing the second part of a match, after the 'with'
