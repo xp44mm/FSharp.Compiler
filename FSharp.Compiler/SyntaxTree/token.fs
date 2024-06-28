@@ -4,15 +4,17 @@ open FSharp.Compiler
 open FSharp.Compiler.Text
 open FSharp.Compiler.Syntax
 
+type LexerContinuation = ParseHelpers.LexerContinuation
+
 type token =
-| BYTEARRAY of byte[] * SynByteStringKind * ParseHelpers.LexerContinuation
-| STRING of string * SynStringKind * ParseHelpers.LexerContinuation
-| INTERP_STRING_BEGIN_END of string * SynStringKind * ParseHelpers.LexerContinuation
-| INTERP_STRING_BEGIN_PART of string * SynStringKind * ParseHelpers.LexerContinuation
-| INTERP_STRING_PART of string * ParseHelpers.LexerContinuation
-| INTERP_STRING_END of string * ParseHelpers.LexerContinuation
-| LBRACE of ParseHelpers.LexerContinuation
-| RBRACE of ParseHelpers.LexerContinuation
+| BYTEARRAY of byte[] * SynByteStringKind * LexerContinuation
+| STRING of string * SynStringKind * LexerContinuation
+| INTERP_STRING_BEGIN_END of string * SynStringKind * LexerContinuation
+| INTERP_STRING_BEGIN_PART of string * SynStringKind * LexerContinuation
+| INTERP_STRING_PART of string * LexerContinuation
+| INTERP_STRING_END of string * LexerContinuation
+| LBRACE of LexerContinuation
+| RBRACE of LexerContinuation
 | KEYWORD_STRING of string * string
 | IDENT of string
 | HASH_IDENT of string
@@ -74,7 +76,6 @@ type token =
 | EXTERN | VOID | PUBLIC | PRIVATE | INTERNAL | GLOBAL
 | TYPE_COMING_SOON | TYPE_IS_HERE | MODULE_COMING_SOON | MODULE_IS_HERE
 
-
 | HIGH_PRECEDENCE_BRACK_APP
 | HIGH_PRECEDENCE_PAREN_APP
 | HIGH_PRECEDENCE_TYAPP
@@ -90,7 +91,6 @@ type token =
 | OFUNCTION        
 | OFUN             
 
-
 | ORESET          
 
 | OBLOCKBEGIN      
@@ -104,20 +104,18 @@ type token =
 
 | OINTERFACE_MEMBER
 | FIXED
-| ODUMMY of token // ODUMMY is a context closer token, after its context is closed
 
 | LEX_FAILURE of string
-| COMMENT      of ParseHelpers.LexerContinuation
-| WHITESPACE   of ParseHelpers.LexerContinuation
-| HASH_LINE    of ParseHelpers.LexerContinuation
-| HASH_LIGHT   of ParseHelpers.LexerContinuation
-| INACTIVECODE of ParseHelpers.LexerContinuation
-| LINE_COMMENT of ParseHelpers.LexerContinuation
-| STRING_TEXT of ParseHelpers.LexerContinuation
-| EOF of ParseHelpers.LexerContinuation
-| HASH_IF of range * string * ParseHelpers.LexerContinuation
-| HASH_ELSE of range * string * ParseHelpers.LexerContinuation
-| HASH_ENDIF of range * string * ParseHelpers.LexerContinuation
+| COMMENT      of LexerContinuation
+| WHITESPACE   of LexerContinuation
+| HASH_LINE    of LexerContinuation
+| HASH_LIGHT   of LexerContinuation
+| INACTIVECODE of LexerContinuation
+| LINE_COMMENT of LexerContinuation
+| STRING_TEXT of LexerContinuation
+| EOF of LexerContinuation
+| HASH_IF of range * string * LexerContinuation
+| HASH_ELSE of range * string * LexerContinuation
+| HASH_ENDIF of range * string * LexerContinuation
 
-| TokenLExprParen // from Context Impl
-| TokenRExprParen
+| ODUMMY of token // ODUMMY is a context closer token, after its context is closed

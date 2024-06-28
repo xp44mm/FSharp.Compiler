@@ -246,11 +246,11 @@ let rec isTypeSeqBlockElementContinuator token =
 // Work out when a token doesn't terminate a single item in a sequence definition
 let rec isSeqBlockElementContinuator token =
     isInfix token ||
-          // Infix tokens may align with the first column of a sequence block without closing a sequence element and starting a new one
-          // e.g.
-          //  let f x
-          //      h x
-          //      |> y                              <------- NOTE: Not a new element in the sequence
+    // Infix tokens may align with the first column of a sequence block without closing a sequence element and starting a new one
+    // e.g.
+    //  let f x
+    //      h x
+    //      |> y                              <------- NOTE: Not a new element in the sequence
 
     match token with
     // The following tokens may align with the first column of a sequence block without closing a sequence element and starting a new one *)
@@ -289,6 +289,14 @@ let isAtomicExprEndToken token =
     | NULL | FALSE | TRUE | UNDERSCORE -> true
     | _ -> false
 
+let isControlFlow(token) =
+    match token with
+    | TRY | MATCH | MATCH_BANG | IF | LET _ | FOR | WHILE | WHILE_BANG -> true
+    | _ -> false
+
+let isSemiSemi token = match token with SEMICOLON_SEMICOLON -> true | _ -> false
+
+
 //----------------------------------------------------------------------------
 // give a 'begin' token, does an 'end' token match?
 //--------------------------------------------------------------------------
@@ -311,13 +319,6 @@ let parenTokensBalance token1 token2 =
     | BEGIN, END -> true
     | LQUOTE (q1,_), RQUOTE (q2,_) when q1 = q2 -> true
     | _ -> false
-
-let isControlFlow(token) =
-    match token with
-    | TRY | MATCH | MATCH_BANG | IF | LET _ | FOR | WHILE | WHILE_BANG -> true
-    | _ -> false
-
-let isSemiSemi token = match token with SEMICOLON_SEMICOLON -> true | _ -> false
 
 let relaxWhitespace2OffsideRule relaxWhitespace2 token =
     // Offside rule for CtxtLetDecl (in types or modules) / CtxtMemberHead / CtxtTypeDefns... (given RelaxWhitespace2)

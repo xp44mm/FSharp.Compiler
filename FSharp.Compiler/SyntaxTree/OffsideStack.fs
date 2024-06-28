@@ -116,13 +116,13 @@ let undentationLimit relaxWhitespace relaxWhitespace2 (newCtxt: Context) (offsid
         // 'let (ActivePattern <@@' limited by 'let' (given RelaxWhitespace2)
         // Same for 'match', 'if', 'then', 'else', 'for', 'while', 'member', 'when', and everything: No need to specify rules like the 'then' and 'else's below over and over again
         // Test here: Tests/FSharp.Compiler.ComponentTests/Conformance/LexicalFiltering/Basic/OffsideExceptions.fs, RelaxWhitespace2
-        | _, CtxtParen (TokenLExprParen, _) :: rest
+        | _, CtxtParen (TokenUtils.TokenLExprParen, _) :: rest
         // 'let x = { y =' limited by 'let'  (given RelaxWhitespace2) etc.
         // 'let x = {| y =' limited by 'let' (given RelaxWhitespace2) etc.
         // Test here: Tests/FSharp.Compiler.ComponentTests/Conformance/LexicalFiltering/Basic/OffsideExceptions.fs, RelaxWhitespace2
         // 等号后面是要增加的上下文，紧y前CtxtSeqBlock，紧左括号前CtxtParen (TokenLExprParen, _)
         // [ CtxtSeqBlock CtxtParen ] * CtxtLetDecl
-        | _, CtxtSeqBlock _ :: CtxtParen (TokenLExprParen, _) :: rest when relaxWhitespace2
+        | _, CtxtSeqBlock _ :: CtxtParen (TokenUtils.TokenLExprParen, _) :: rest when relaxWhitespace2
                     -> loop false rest
 
         // 'f ...{' places no limit until we hit a CtxtLetDecl etc...
@@ -378,7 +378,7 @@ let tokenForcesHeadContextClosure (token:token) (stack:Context list) =
     | EOF _ -> true
     | SEMICOLON_SEMICOLON -> not (tokenBalancesHeadContext token stack)
 
-    | TokenRExprParen
+    | TokenUtils.TokenRExprParen
     | ELSE
     | ELIF
     | DONE
@@ -890,15 +890,15 @@ let tokenFetch
     hwTokenFetch
     tokensThatNeedNoProcessingCount
     decrTokensThatNeedNoProcessingCount
-    returnToken
+    (returnToken: LexbufState -> token -> token)
     peekNextToken
     popNextTokenTup
     tokenLexbufState
     tokenStartPos
     popCtxt
     getLastTokenEndRange
-    insertToken
-    reprocess
+    (insertToken: token -> token)
+    (reprocess: unit -> token)
     delayToken
     tokenStartCol
     useBlockRule
@@ -935,7 +935,7 @@ let tokenFetch
         returnToken tokenLexbufState token
 
     // 只需补一层，reprocess执行到这一段后继续补齐end token，弹出ctxt
-    if tokenForcesHeadContextClosure token offsideStack then
+    elif tokenForcesHeadContextClosure token offsideStack then
         let ctxt = offsideStack.Head
         if debug then dprintf "IN/ELSE/ELIF/DONE/RPAREN/RBRACE/END/INTERP at %a terminates context at position %a\n" PositionUtils.outputPos tokenStartPos PositionUtils.outputPos ctxt.StartPos
         popCtxt()
@@ -945,7 +945,7 @@ let tokenFetch
             insertToken tok
         | None ->
             reprocess()
-
+    else
     match token, offsideStack with
     // reset on ';;' rule. A ';;' terminates ALL entries
     | SEMICOLON_SEMICOLON, [] ->
@@ -988,10 +988,11 @@ let tokenFetch
         hwTokenFetch useBlockRule
 
     // Balancing rule. Encountering a ')' or '}' balances with a '(' or '{', even if not offside
-    | ((TokenRExprParen | INTERP_STRING_END _ | INTERP_STRING_PART _) as t2), (CtxtParen (t1, _) :: _)
+    | ((TokenUtils.TokenRExprParen | INTERP_STRING_END _ | INTERP_STRING_PART _) as t2), (CtxtParen (t1, _) :: _)
             when TokenUtils.parenTokensBalance t1 t2 ->
         if debug then dprintf "RPAREN/RBRACE/BAR_RBRACE/RBRACK/BAR_RBRACK/RQUOTE/END at %a terminates CtxtParen()\n" PositionUtils.outputPos tokenStartPos
         popCtxt()
+
         match t2 with
         // $".... { ... }  ... { ....} " pushes a block context at second {
         //              ~~~~~~~~
@@ -1016,19 +1017,22 @@ let tokenFetch
 
     //  Transition rule. CtxtNamespaceHead ~~~> CtxtSeqBlock
     //  Applied when a token other then a long identifier is seen
-    | _, CtxtNamespaceHead (namespaceTokenPos, prevToken) :: _ ->
+    | token, CtxtNamespaceHead (namespaceTokenPos, prevToken) :: _ ->
+        // namespace .* ident 尽量长
         match prevToken, token with
-        | (NAMESPACE | DOT | REC | GLOBAL), (REC | IDENT _ | GLOBAL) when namespaceTokenPos.Column < tokenStartPos.Column ->
+        | (NAMESPACE | DOT | REC | GLOBAL), (REC | IDENT _ | GLOBAL) // when namespaceTokenPos.Column < tokenStartPos.Column ->
+            //replaceCtxt tokenTup (CtxtNamespaceHead (namespaceTokenPos, token))
+            //returnToken tokenLexbufState token
+        | IDENT _, DOT when namespaceTokenPos.Column < tokenStartPos.Column 
+            ->
             replaceCtxt tokenTup (CtxtNamespaceHead (namespaceTokenPos, token))
             returnToken tokenLexbufState token
-        | IDENT _, DOT when namespaceTokenPos.Column < tokenStartPos.Column ->
-            replaceCtxt tokenTup (CtxtNamespaceHead (namespaceTokenPos, token))
-            returnToken tokenLexbufState token
-        | _ ->
+        | _ -> // 超过head的第一个token
             if debug then dprintf "CtxtNamespaceHead: pushing CtxtSeqBlock\n"
             popCtxt()
+
             // Don't push a new context if next token is EOF, since that raises an offside warning
-            match tokenTup.Token with
+            match token with
             | EOF _ ->
                 returnToken tokenLexbufState token
             | _ ->
@@ -1044,13 +1048,16 @@ let tokenFetch
     //  Here prevToken is either 'module', 'rec', 'global' (invalid), '.', or ident, because we skip attribute tokens and access modifier tokens
     | _, CtxtModuleHead (moduleTokenPos, prevToken, lexingModuleAttributes, isNested) :: rest ->
         match prevToken, token with
+        // 结束特性括号
         | _, GREATER_RBRACK when lexingModuleAttributes = LexingModuleAttributes
                                     && moduleTokenPos.Column < tokenStartPos.Column ->
             replaceCtxt tokenTup (CtxtModuleHead (moduleTokenPos, prevToken, NotLexingModuleAttributes, isNested))
             returnToken tokenLexbufState token
+        //在特征括号中
         | _ when lexingModuleAttributes = LexingModuleAttributes
                     && moduleTokenPos.Column < tokenStartPos.Column ->
             returnToken tokenLexbufState token
+        //刚开头
         | MODULE, (PUBLIC | PRIVATE | INTERNAL) when moduleTokenPos.Column < tokenStartPos.Column ->
             returnToken tokenLexbufState token
         | MODULE, GLOBAL
@@ -1061,10 +1068,11 @@ let tokenFetch
         | MODULE, LBRACK_LESS when moduleTokenPos.Column < tokenStartPos.Column  ->
             replaceCtxt tokenTup (CtxtModuleHead (moduleTokenPos, prevToken, LexingModuleAttributes, isNested))
             returnToken tokenLexbufState token
+        // 有等号
         | _, (EQUALS | COLON) ->
             if debug then dprintf "CtxtModuleHead: COLON/EQUALS, pushing CtxtModuleBody and CtxtSeqBlock\n"
             popCtxt()
-            pushCtxt tokenTup (CtxtModuleBody (moduleTokenPos, false))
+            pushCtxt tokenTup (CtxtModuleBody (moduleTokenPos, false)) // 不是整个文件
             pushCtxtSeqBlock tokenTup AddBlockEnd
             returnToken tokenLexbufState token
         | _ ->
@@ -1073,13 +1081,13 @@ let tokenFetch
                 if debug then dprintf "CtxtModuleHead: start of file, CtxtSeqBlock\n"
                 popCtxt()
                 // Don't push a new context if next token is EOF, since that raises an offside warning
-                match tokenTup.Token with
+                match token with
                 | EOF _ ->
                     returnToken tokenLexbufState token
                 | _ ->
                     // We have reached other tokens without encountering '=' or ':', so this is a module declaration spanning the whole file
                     delayToken tokenTup
-                    pushCtxt tokenTup (CtxtModuleBody (moduleTokenPos, true))
+                    pushCtxt tokenTup (CtxtModuleBody (moduleTokenPos, true)) // 整个文件都是模块
                     pushCtxtSeqBlock tokenTup AddBlockEnd
                     hwTokenFetch false
             | _ ->
@@ -1089,63 +1097,76 @@ let tokenFetch
                 popCtxt()
                 insertTokenFromPrevPosToCurrentPos OBLOCKSEP
 
+
+    // NOTE: ;; does not terminate a 'namespace' body.
+    //((isSemiSemi && not (match rest with (CtxtNamespaceBody _ | CtxtModuleBody (_, true)) :: _ -> true | _ -> false)) ||
+    | SEMICOLON_SEMICOLON, CtxtSeqBlock(_, offsidePos, addBlockEnd) :: ctxt :: _ when 
+        not (match ctxt with (CtxtNamespaceBody _ | CtxtModuleBody (_, true)) -> true | _ -> false) ->
+        if debug then dprintf "offside token at column %d indicates end of CtxtSeqBlock started at %a!\n" tokenStartCol PositionUtils.outputPos offsidePos
+        popCtxt()
+        if debug then (match addBlockEnd with AddBlockEnd -> dprintf "end of CtxtSeqBlock, insert OBLOCKEND \n" | _ -> ())
+        match addBlockEnd with
+        | AddBlockEnd -> insertToken (OBLOCKEND(getLastTokenEndRange ()))
+        | AddOneSidedBlockEnd -> insertToken (ORIGHT_BLOCK_END(getLastTokenEndRange ()))
+        | NoAddBlockEnd -> reprocess()
+
     //  Offside rule for SeqBlock.
     //      f x
     //      g x
     //    ...
-    | _, CtxtSeqBlock(_, offsidePos, addBlockEnd) :: rest when
+    
+    | token, CtxtSeqBlock(_, offsidePos, addBlockEnd) :: rest when
+        let grace =
+            match token, rest with
+            // When in a type context allow a grace of 2 column positions for '|' tokens, permits
+            //  type x =
+            //      A of string    <-- note missing '|' here - bad style, and perhaps should be disallowed
+            //    | B of int
+            | BAR, CtxtTypeDefns _ :: _ -> 2
 
-            // NOTE: ;; does not terminate a 'namespace' body.
-            ((isSemiSemi && not (match rest with (CtxtNamespaceBody _ | CtxtModuleBody (_, true)) :: _ -> true | _ -> false)) ||
-                let grace =
-                    match token, rest with
-                        // When in a type context allow a grace of 2 column positions for '|' tokens, permits
-                        //  type x =
-                        //      A of string    <-- note missing '|' here - bad style, and perhaps should be disallowed
-                        //    | B of int
-                    | BAR, CtxtTypeDefns _ :: _ -> 2
+            // This ensures we close a type context seq block when the '|' marks
+            // of a type definition are aligned with the 'type' token.
+            //
+            //  type x =
+            //  | A
+            //  | B
+            //
+            //  <TOKEN>    <-- close the type context sequence block here *)
+            | _, CtxtTypeDefns(posType, _) :: _ when 
+                offsidePos.Column = posType.Column && 
+                not (TokenUtils.isTypeSeqBlockElementContinuator token) -> -1
 
-                        // This ensures we close a type context seq block when the '|' marks
-                        // of a type definition are aligned with the 'type' token.
-                        //
-                        //  type x =
-                        //  | A
-                        //  | B
-                        //
-                        //  <TOKEN>    <-- close the type context sequence block here *)
-                    | _, CtxtTypeDefns(posType, _) :: _ when offsidePos.Column = posType.Column && not (TokenUtils.isTypeSeqBlockElementContinuator token) -> -1
+            // This ensures we close a namespace body when we see the next namespace definition
+            //
+            //  namespace A.B.C
+            //  ...
+            //  
+            //  namespace <-- close the namespace body context here 
+            | _, CtxtNamespaceBody posNamespace :: _ when offsidePos.Column = posNamespace.Column && (match token with NAMESPACE -> true | _ -> false) -> -1
 
-                        // This ensures we close a namespace body when we see the next namespace definition
-                        //
-                        //  namespace A.B.C
-                        //  ...
-                        //  
-                        //  namespace <-- close the namespace body context here 
-                    | _, CtxtNamespaceBody posNamespace :: _ when offsidePos.Column = posNamespace.Column && (match token with NAMESPACE -> true | _ -> false) -> -1
-
-                    | _ ->
-                        // Allow a grace of >2 column positions for infix tokens, permits
-                        //  let x =
-                        //        expr + expr
-                        //      + expr + expr
-                        // And
-                        //    let x =
-                        //          expr
-                        //       |> f expr
-                        //       |> f expr
-                        // Note you need a semicolon in the following situation:
-                        //
-                        //  let x =
-                        //        stmt
-                        //       -expr     <-- not allowed, as prefix token is here considered infix
-                        //
-                        // i.e.
-                        //
-                        //  let x =
-                        //        stmt
-                        //        -expr
-                        (if TokenUtils.isInfix token then TokenUtils.infixTokenLength token + 1 else 0)
-                (tokenStartCol + grace < offsidePos.Column)) ->
+            | _ ->
+                // Allow a grace of >2 column positions for infix tokens, permits
+                //  let x =
+                //        expr + expr
+                //      + expr + expr
+                // And
+                //    let x =
+                //          expr
+                //       |> f expr
+                //       |> f expr
+                // Note you need a semicolon in the following situation:
+                //
+                //  let x =
+                //        stmt
+                //       -expr     <-- not allowed, as prefix token is here considered infix
+                //
+                // i.e.
+                //
+                //  let x =
+                //        stmt
+                //        -expr
+                (if TokenUtils.isInfix token then TokenUtils.infixTokenLength token + 1 else 0)
+        (tokenStartCol + grace < offsidePos.Column) ->
         if debug then dprintf "offside token at column %d indicates end of CtxtSeqBlock started at %a!\n" tokenStartCol PositionUtils.outputPos offsidePos
         popCtxt()
         if debug then (match addBlockEnd with AddBlockEnd -> dprintf "end of CtxtSeqBlock, insert OBLOCKEND \n" | _ -> ())
@@ -1565,7 +1586,7 @@ let tokenFetch
     // $".... { ... }  ... { ....} " pushes a block context at first {
     // ~~~~~~~~
     //    ^---------INTERP_STRING_BEGIN_PART
-    | (TokenLExprParen | SIG | INTERP_STRING_BEGIN_PART _), _ ->
+    | (TokenUtils.TokenLExprParen | SIG | INTERP_STRING_BEGIN_PART _), _ ->
         if debug then dprintf "LPAREN etc., pushes CtxtParen, pushing CtxtSeqBlock, tokenStartPos = %a\n" PositionUtils.outputPos tokenStartPos
         let pos = match token with
                     | INTERP_STRING_BEGIN_PART _ -> tokenTup.LexbufState.EndPos

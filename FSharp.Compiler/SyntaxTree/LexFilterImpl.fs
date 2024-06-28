@@ -357,14 +357,14 @@ type LexFilterImpl (
             hwTokenFetch
             tokensThatNeedNoProcessingCount
             decrTokensThatNeedNoProcessingCount
-            returnToken
+            (returnToken: LexbufState -> token -> token)
             peekNextToken
             popNextTokenTup
             tokenLexbufState
             tokenStartPos
             popCtxt
             getLastTokenEndRange
-            insertToken
+            (insertToken: token -> token)
             reprocess
             delayToken
             tokenStartCol

@@ -45,7 +45,7 @@ let endTokenForACtxt getLastTokenEndRange (ctxt:Context) =
 let isBegin (ctxt:Context) =
     match ctxt with
     // open-parens of sorts
-    | CtxtParen(TokenLExprParen, _) -> true
+    | CtxtParen(TokenUtils.TokenLExprParen, _) -> true
     // seq blocks
     | CtxtSeqBlock _ -> true
     // vanillas

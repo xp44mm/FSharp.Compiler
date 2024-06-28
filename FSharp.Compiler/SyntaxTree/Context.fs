@@ -14,19 +14,20 @@ open FSharp.Compiler.Parser
 open FSharp.Compiler.UnicodeLexing
 open FSharp.Compiler
 
+// end of CtxtSeqBlock, insert 
 type AddBlockEnd = 
-    | AddBlockEnd 
-    | NoAddBlockEnd 
-    | AddOneSidedBlockEnd
+    | NoAddBlockEnd  // Nothing
+    | AddBlockEnd // OBLOCKEND
+    | AddOneSidedBlockEnd // ORIGHT_BLOCK_END
 
 type FirstInSequence = 
     | FirstInSeqBlock 
     | NotFirstInSeqBlock
 
-///module [<>]? name
+/// 当前token是否在[<>]之中。module关键字开始是 NotLexingModuleAttributes
 type LexingModuleAttributes = 
-    | LexingModuleAttributes 
-    | NotLexingModuleAttributes
+    | LexingModuleAttributes  // 当前位置在[<之后
+    | NotLexingModuleAttributes // 当前位置在>]之后
 
 type Context =
     // Position is position of keyword.
@@ -48,9 +49,8 @@ type Context =
     | CtxtDo of Position
     | CtxtInterfaceHead of Position
     | CtxtTypeDefns of Position * equalsEndPos: Position option // 'type <here> =', not removed when we find the "="
-
-    | CtxtNamespaceHead of Position * prevToken: token
-    | CtxtModuleHead of Position * prevToken: token * LexingModuleAttributes * isNested: bool
+    | CtxtNamespaceHead of Position * last: token
+    | CtxtModuleHead of Position * last: token * LexingModuleAttributes * isNested: bool
     | CtxtMemberHead of Position
     | CtxtMemberBody of Position
     // If bool is true then this is "whole file"
